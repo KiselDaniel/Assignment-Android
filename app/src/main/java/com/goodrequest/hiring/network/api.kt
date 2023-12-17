@@ -1,6 +1,7 @@
-package com.goodrequest.hiring
+package com.goodrequest.hiring.network
 
-import com.goodrequest.hiring.ui.*
+import com.goodrequest.hiring.model.Pokemon
+import com.goodrequest.hiring.model.PokemonDetail
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.logging.HttpLoggingInterceptor
