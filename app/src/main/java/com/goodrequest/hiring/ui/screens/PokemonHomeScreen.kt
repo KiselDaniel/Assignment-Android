@@ -2,9 +2,14 @@ package com.goodrequest.hiring.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -30,6 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import coil.compose.rememberAsyncImagePainter
+import com.goodrequest.hiring.R
 import com.goodrequest.hiring.model.Pokemon
 import com.goodrequest.hiring.viewmodel.PokemonViewModel
 import com.goodrequest.hiring.viewmodel.ResourceState
@@ -94,7 +103,25 @@ fun PokemonHomeScreen(
 
 @Composable
 private fun PokemonItem(pokemon: Pokemon) {
-    PokemonTextComponent(textValue = pokemon.name)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+    ) {
+        PokemonNameTextComponent(textValue = pokemon.name)
+        PokemonImageComponent(imageUrl = pokemon.detail?.image ?: "")
+        Spacer(modifier = Modifier.size(16.dp))
+        Row {
+            if (pokemon.detail?.weight != null) {
+                PokemonAttributeTextComponent(textValue = "Weight: ${pokemon.detail.weight} Kg")
+            }
+            Spacer(Modifier.weight(1f))
+            if (pokemon.detail?.move != null) {
+                PokemonAttributeTextComponent(textValue = "Move: ${pokemon.detail.move}")
+            }
+        }
+        Divider()
+    }
 }
 
 @Composable
@@ -102,13 +129,12 @@ private fun PokemonList(pokemonList: List<Pokemon>) {
     LazyColumn {
         items(pokemonList) { pokemon ->
             PokemonItem(pokemon)
-            Divider()
         }
     }
 }
 
 @Composable
-fun PokemonTextComponent(textValue: String) {
+private fun PokemonNameTextComponent(textValue: String) {
     Text(
         modifier = Modifier
             .fillMaxWidth()
@@ -116,11 +142,41 @@ fun PokemonTextComponent(textValue: String) {
             .padding(8.dp),
         text = textValue,
         style = TextStyle(
-            fontSize = 18.sp,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = FontFamily.Monospace,
+            color = Color.DarkGray
+        )
+    )
+}
+
+@Composable
+private fun PokemonAttributeTextComponent(textValue: String) {
+    Text(
+        modifier = Modifier
+            .wrapContentHeight()
+            .padding(16.dp),
+        text = textValue,
+        style = TextStyle(
+            fontSize = 16.sp,
             fontWeight = FontWeight.Normal,
             fontFamily = FontFamily.Monospace,
             color = Color.DarkGray
         )
+    )
+}
+
+@Composable
+private fun PokemonImageComponent(imageUrl: String) {
+    AsyncImage(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp),
+        model = imageUrl,
+        contentDescription = "Pokemon Image",
+        contentScale = ContentScale.Fit,
+        placeholder = rememberAsyncImagePainter(R.drawable.placeholder_pokemon_image),
+        error = rememberAsyncImagePainter(R.drawable.placeholder_pokemon_image),
     )
 }
 
@@ -146,39 +202,3 @@ fun RetryButton(onclick: () -> Unit) {
         }
     }
 }
-
-/*
-just for reference of async image loading
-@Composable
-fun NewsArticlesPageList(page: Int, article: Article) {
-    Column (
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(8.dp)
-            .background(Color.Transparent)
-    ) {
-        AsyncImage(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(240.dp),
-            model = article.urlToImage,
-            contentDescription = "",
-            contentScale = ContentScale.Crop,
-            placeholder = painterResource(id = R.drawable.placeholder_image),
-            error = painterResource(id = R.drawable.placeholder_image),
-        )
-
-        Spacer(modifier = Modifier.size(20.dp))
-
-        HeaderTextComponent(textValue = article.title ?: "")
-
-        Spacer(modifier = Modifier.size(10.dp))
-
-        BodyTextComponent(textValue = article.description ?: "")
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        AuthorTextComponent(textValue = article.author ?: "")
-    }
-}
- */

@@ -1,4 +1,4 @@
-package com.goodrequest.hiring;
+package com.goodrequest.hiring
 
 import android.app.Application
 import dagger.hilt.android.HiltAndroidApp
