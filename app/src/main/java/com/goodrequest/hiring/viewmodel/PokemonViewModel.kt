@@ -1,5 +1,6 @@
 package com.goodrequest.hiring.viewmodel
 
+import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.goodrequest.hiring.model.Pokemon
@@ -10,7 +11,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -19,74 +20,129 @@ class PokemonViewModel @Inject constructor(
     private val pokemonRepository: PokemonRepository,
 ) : ViewModel() {
 
-    private val _pokemonViewState: MutableStateFlow<PokemonViewState> = MutableStateFlow(PokemonViewState(resourceState = ResourceState.Loading()))
+    private val _pokemonViewState: MutableStateFlow<PokemonViewState> = MutableStateFlow(PokemonViewState(resourceState = ResourceState.Loading(), pokemonList = mutableStateListOf()))
     val pokemonViewState: StateFlow<PokemonViewState> = _pokemonViewState
 
+    private var currentPage = 1
+
     init {
-        loadPokemons()
+        loadPokemon()
     }
 
-    private fun loadPokemons() {
+    /**
+     * Populates the empty list of Pokemon with first page of data from the API.
+     */
+    private fun loadPokemon() {
         setResourceState(ResourceState.Loading())
 
         viewModelScope.launch(Dispatchers.IO) {
-            pokemonRepository.loadPokemons().collect { resourceState ->
-                val pokemonList =
+            pokemonRepository.loadPokemon(page = currentPage).collect { resourceState ->
+                val pokemonList = if (resourceState is ResourceState.Success) {
+                    resourceState.data.getOrNull() ?: emptyList()
+                } else {
+                    emptyList()
+                }
+
+                setViewState(pokemonList.toMutableList(), resourceState)
+
+                if (resourceState is ResourceState.Success && pokemonList.isNotEmpty()) {
+                    fetchPokemonDetails(pokemonList)
+                }
+            }
+        }
+    }
+
+    /**
+     * Loads the next page of data from the API and appends it to the existing list of Pokemon.
+     */
+    fun loadMorePokemon() {
+        viewModelScope.launch(Dispatchers.IO) {
+            pokemonRepository.loadPokemon(page = currentPage + 1).collect { resourceState ->
+                val newPokemonList =
                     if (resourceState is ResourceState.Success) {
                         resourceState.data.getOrNull() ?: emptyList()
                     } else {
                         emptyList()
                     }
 
-                setViewState(pokemonList, resourceState)
-            }
+                val currentList = _pokemonViewState.value.pokemonList
+                val updatedList = mutableListOf<Pokemon>().apply {
+                    addAll(currentList)
+                    addAll(newPokemonList)
+                }
 
-            if (_pokemonViewState.value.pokemonList.isNotEmpty()) {
-                fetchPokemonDetails()
+                setViewState(updatedList, resourceState)
+
+                // Increment the page number only if the loading operation is successful
+                if (resourceState is ResourceState.Success && newPokemonList.isNotEmpty()) {
+                    currentPage++
+                    fetchPokemonDetails(newPokemonList)
+                }
             }
         }
     }
 
-    fun refreshPokemons() {
-        var loadSuccessful = false
+    /**
+     * Refreshes the list of Pokemon with the fresh data from the API.
+     */
+    fun refreshPokemon() {
         setResourceState(ResourceState.Refreshing())
 
         viewModelScope.launch(Dispatchers.IO) {
-            pokemonRepository.loadPokemons().collect { resourceState ->
+            pokemonRepository.loadPokemon(page = currentPage).collect { resourceState ->
                 val currentList = _pokemonViewState.value.pokemonList
-                val pokemonList = if (resourceState is ResourceState.Success) {
-                    loadSuccessful = true
+                val refreshedPokemonList = if (resourceState is ResourceState.Success) {
                     resourceState.data.getOrNull() ?: emptyList()
                 } else {
-                    if (currentList.isNotEmpty()) currentList else emptyList()
+                    currentList
                 }
 
-                setViewState(pokemonList, resourceState)
-            }
+                setViewState(refreshedPokemonList.toMutableList(), resourceState)
 
-            if (loadSuccessful && _pokemonViewState.value.pokemonList.isNotEmpty()) {
-                fetchPokemonDetails()
+                if (resourceState is ResourceState.Success && refreshedPokemonList.isNotEmpty()) {
+                    fetchPokemonDetails(refreshedPokemonList)
+                }
             }
         }
     }
 
-    private fun fetchPokemonDetails() {
+    /**
+     * Fetches the details of the Pokemon from the API.
+     *
+     * @param newPokemonList The list of Pokemon for which the details are to be fetched.
+     */
+    private fun fetchPokemonDetails(newPokemonList: List<Pokemon>) {
         viewModelScope.launch {
-            val currentList = _pokemonViewState.value.pokemonList
-            val pokemonDetails = currentList.map { pokemon ->
-                async(Dispatchers.IO) { pokemonRepository.loadPokemonDetail(pokemon).first() }
+            val pokemonDetails = newPokemonList.map { pokemon ->
+                async(Dispatchers.IO) { pokemonRepository.loadPokemonDetail(pokemon).firstOrNull() }
             }.awaitAll()
 
-            _pokemonViewState.value = _pokemonViewState.value.copy(
-                pokemonList = currentList.mapIndexed { index, pokemon ->
-                    pokemon.copy(detail = pokemonDetails[index].getOrNull())
+            // Update only the new Pokemon details in the existing list
+            val currentList = _pokemonViewState.value.pokemonList
+            newPokemonList.forEachIndexed { index, pokemon ->
+                val detail = pokemonDetails[index]?.getOrNull()
+                val updatedPokemon = pokemon.copy(detail = detail)
+
+                // Find the index of the pokemon in the existing list and update it
+                val pokemonIndex = currentList.indexOfFirst { it.id == pokemon.id }
+                if (pokemonIndex != -1) {
+                    currentList[pokemonIndex] = updatedPokemon
+                } else {
+                    currentList.add(updatedPokemon) // If not found, add the new Pokemon to the list
                 }
-            )
+            }
+
+            // Trigger an update to notify the UI
+            updatePokemonList(pokemonList = currentList)
         }
     }
 
     fun retry() {
-        loadPokemons()
+        loadPokemon()
+    }
+
+    fun retryPage() {
+        loadMorePokemon()
     }
 
     private fun setResourceState(resourceState: ResourceState<Result<List<Pokemon>>>) {
@@ -95,10 +151,16 @@ class PokemonViewModel @Inject constructor(
         )
     }
 
-    private fun setViewState(pokemonList: List<Pokemon>, resourceState: ResourceState<Result<List<Pokemon>>>) {
+    private fun setViewState(pokemonList: MutableList<Pokemon>, resourceState: ResourceState<Result<List<Pokemon>>>) {
         _pokemonViewState.value = PokemonViewState(
             pokemonList = pokemonList,
             resourceState = resourceState
+        )
+    }
+
+    private fun updatePokemonList(pokemonList: MutableList<Pokemon>) {
+        _pokemonViewState.value = _pokemonViewState.value.copy(
+            pokemonList = pokemonList
         )
     }
 }
